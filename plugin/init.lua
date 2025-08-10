@@ -89,6 +89,9 @@ function M.Open_with_hx(window, pane, url)
 end
 
 function M.apply_to_config(config, opts)
+    if not opts then
+        opts = {}
+    end
     local key = opts.key or "s"
     local mods = opts.mods or "CMD|SHIFT"
     local patterns = opts.patterns or {
