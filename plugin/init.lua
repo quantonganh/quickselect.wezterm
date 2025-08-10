@@ -105,6 +105,7 @@ function M.apply_to_config(config, opts)
         '[^{]*{.*}',
     }
 
+    config.keys = config.keys or {}
     table.insert(config.keys, {
         key = key,
         mods = mods,
