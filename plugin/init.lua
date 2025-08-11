@@ -16,28 +16,17 @@ local function extract_filename(uri)
     return nil
 end
 
-local function editable(filename)
-    local extension = filename:match("%.([^.:/\\]+):%d+.*$")
-    if extension then
-        wezterm.log_info(string.format("extension is [%s]", extension))
-        local text_extensions = {
-            md = true,
-            c = true,
-            go = true,
-            scm = true,
-            rkt = true,
-            rs = true,
-            java = true,
-        }
-        if text_extensions[extension] then
-            return true
-        end
+local function is_editable(filename, text_extensions)
+    local ext = filename:match("%.([^.:/\\]+):%d+.*$")
+    if ext then
+        wezterm.log_info(string.format("extension is [%s]", ext))
+        return text_extensions[ext] or false
     end
 
     return false
 end
 
-local function extension(filename)
+local function get_extension(filename)
     return filename:match("%.([^.:/\\]+):%d+:%d+$")
 end
 
@@ -45,47 +34,45 @@ local function basename(s)
     return string.gsub(s, '(.*[/\\])(.*)', '%2')
 end
 
-function M.Open_with_hx(window, pane, url)
-    local name = extract_filename(url)
-        wezterm.log_info('name: ' .. url)
-    if name and editable(name) then
-        wezterm.log_info('editable')
-        if extension(name) == "rs" then
-            local pwd = string.gsub(tostring(pane:get_current_working_dir()), "file://.-(/.+)", "%1")
-            name = pwd .. "/" .. name
-        end
-
-        local direction = 'Up'
-        local hx_pane = pane:tab():get_pane_direction(direction)
-        wezterm.log_info("fg process: " .. hx_pane:get_foreground_process_name())
-        if hx_pane == nil then
-            local action = act{
-                SplitPane={
-                    direction = direction,
-                    command = { args = { 'hx', name } }
-                };
-            };
-            window:perform_action(action, pane);
-            pane:tab():get_pane_direction(direction).activate()
-        elseif basename(hx_pane:get_foreground_process_name()) == "hx" then
-            wezterm.log_info('process = hx')
-            local action = act.SendString(':open ' .. name .. '\r')
-            window:perform_action(action, hx_pane);
-            -- local zoom_action = wezterm.action.SendString(':sh wezterm cli zoom-pane\r\n')
-            -- window:perform_action(zoom_action, hx_pane);
-            hx_pane:activate()
-        else
-            local action = act.SendString('hx ' .. name .. '\r')
-            wezterm.log_info('action: ' .. action)
-            window:perform_action(action, hx_pane);
-            hx_pane:activate()
-        end
-        -- prevent the default action from opening in a browser
-        return false
+function M.Open_with_hx(window, pane, url, text_extensions)
+    local filename = extract_filename(url)
+    if not (filename and is_editable(filename, text_extensions)) then
+        return -- let default action handle it
     end
-    -- otherwise, by not specifying a return value, we allow later
-    -- handlers and ultimately the default action to caused the
-    -- URI to be opened in the browser
+
+    wezterm.log_info('editable')
+    if get_extension(filename) == "rs" then
+        local pwd = string.gsub(tostring(pane:get_current_working_dir()), "file://.-(/.+)", "%1")
+        filename = pwd .. "/" .. filename
+    end
+
+    local direction = 'Up'
+    local hx_pane = pane:tab():get_pane_direction(direction)
+    wezterm.log_info("fg process: " .. hx_pane:get_foreground_process_name())
+    if hx_pane == nil then
+        local action = act{
+            SplitPane={
+                direction = direction,
+                command = { args = { 'hx', filename } }
+            };
+        };
+        window:perform_action(action, pane);
+        pane:tab():get_pane_direction(direction).activate()
+    elseif basename(hx_pane:get_foreground_process_name()) == "hx" then
+        wezterm.log_info('process = hx')
+        local action = act.SendString(':open ' .. filename .. '\r')
+        window:perform_action(action, hx_pane);
+        -- local zoom_action = wezterm.action.SendString(':sh wezterm cli zoom-pane\r\n')
+        -- window:perform_action(zoom_action, hx_pane);
+        hx_pane:activate()
+    else
+        local action = act.SendString('hx ' .. filename .. '\r')
+        wezterm.log_info('action: ' .. action)
+        window:perform_action(action, hx_pane);
+        hx_pane:activate()
+    end
+    -- prevent the default action from opening in a browser
+    return false
 end
 
 function M.apply_to_config(config, opts)
@@ -94,6 +81,15 @@ function M.apply_to_config(config, opts)
     end
     local key = opts.key or "s"
     local mods = opts.mods or "CMD|SHIFT"
+    local text_extensions = opts.text_extensions or {
+        md = true,
+        c = true,
+        go = true,
+        scm = true,
+        rkt = true,
+        rs = true,
+        java = true,
+    }
     local patterns = opts.patterns or {
         'https?://\\S+',
         '^/[^/\r\n]+(?:/[^/\r\n]+)*:\\d+:\\d+',
@@ -142,7 +138,7 @@ function M.apply_to_config(config, opts)
                     else
                         selection = "$EDITOR:" .. selection
                     end
-                    return M.Open_with_hx(window, pane, selection)
+                    return M.Open_with_hx(window, pane, selection, text_extensions)
                 end
             end)
         }
