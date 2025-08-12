@@ -34,9 +34,9 @@ local function basename(s)
     return string.gsub(s, '(.*[/\\])(.*)', '%2')
 end
 
-function M.Open_with_hx(window, pane, url, text_extensions)
+function M.Open_with_hx(window, pane, url, opts)
     local filename = extract_filename(url)
-    if not (filename and is_editable(filename, text_extensions)) then
+    if not (filename and is_editable(filename, opts.text_extensions)) then
         return -- let default action handle it
     end
 
@@ -46,24 +46,21 @@ function M.Open_with_hx(window, pane, url, text_extensions)
         filename = pwd .. "/" .. filename
     end
 
-    local direction = 'Up'
-    local hx_pane = pane:tab():get_pane_direction(direction)
+    local hx_pane = pane:tab():get_pane_direction(opts.direction)
     wezterm.log_info("fg process: " .. hx_pane:get_foreground_process_name())
     if hx_pane == nil then
         local action = act{
             SplitPane={
-                direction = direction,
+                direction = opts.direction,
                 command = { args = { 'hx', filename } }
             };
         };
         window:perform_action(action, pane);
-        pane:tab():get_pane_direction(direction).activate()
+        pane:tab():get_pane_direction(opts.direction).activate()
     elseif basename(hx_pane:get_foreground_process_name()) == "hx" then
         wezterm.log_info('process = hx')
         local action = act.SendString(':open ' .. filename .. '\r')
         window:perform_action(action, hx_pane);
-        -- local zoom_action = wezterm.action.SendString(':sh wezterm cli zoom-pane\r\n')
-        -- window:perform_action(zoom_action, hx_pane);
         hx_pane:activate()
     else
         local action = act.SendString('hx ' .. filename .. '\r')
@@ -79,9 +76,9 @@ function M.apply_to_config(config, opts)
     if not opts then
         opts = {}
     end
-    local key = opts.key or "s"
-    local mods = opts.mods or "CMD|SHIFT"
-    local text_extensions = opts.text_extensions or {
+    opts.key = opts.key or "s"
+    opts.mods = opts.mods or "CMD|SHIFT"
+    opts.text_extensions = opts.text_extensions or {
         md = true,
         c = true,
         go = true,
@@ -90,7 +87,7 @@ function M.apply_to_config(config, opts)
         rs = true,
         java = true,
     }
-    local patterns = opts.patterns or {
+    opts.patterns = opts.patterns or {
         'https?://\\S+',
         '^/[^/\r\n]+(?:/[^/\r\n]+)*:\\d+:\\d+',
         '[^\\s]+\\.rs:\\d+:\\d+',
@@ -100,14 +97,15 @@ function M.apply_to_config(config, opts)
         '[^\\s]+\\.java:\\[\\d+,\\d+\\]',
         '[^{]*{.*}',
     }
+    opts.direction = opts.direction or "Up"
 
     config.keys = config.keys or {}
     table.insert(config.keys, {
-        key = key,
-        mods = mods,
+        key = opts.key,
+        mods = opts.mods,
         action = act.QuickSelectArgs {
             label = 'open url',
-            patterns = patterns,
+            patterns = opts.patterns,
             action = wezterm.action_callback(function(window, pane)
                 local selection = window:get_selection_text_for_pane(pane)
                 wezterm.log_info('opening: ' .. selection)
@@ -138,7 +136,7 @@ function M.apply_to_config(config, opts)
                     else
                         selection = "$EDITOR:" .. selection
                     end
-                    return M.Open_with_hx(window, pane, selection, text_extensions)
+                    return M.Open_with_hx(window, pane, selection, opts)
                 end
             end)
         }
